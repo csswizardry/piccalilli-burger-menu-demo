@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Build a fully-responsive, progressively enhanced burger menu</title>
+    <link rel="stylesheet" href="css/reset.min.css" />
+    <link rel="stylesheet" href="css/global.css" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" />
+
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Halant:wght@600&family=Hind:wght@400;500;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Halant:wght@600&family=Hind:wght@400;500;700&display=swap" media="print" onload="this.media='all'" />
+
+    <script> </script>
+
+  </head>
+  <body>
+    <header class="site-head" role="banner">
+      <a href="#main-content" class="skip-link">Skip to content</a>
+      <div class="wrapper">
+        <div class="site-head__inner">
+          <a href="/" aria-label="ACME home" class="site-head__brand">
+            <img src="images/logo.svg" alt="ACME logo" width="48" height="60" />
+          </a>
+          <burger-menu max-width="600">
+            <nav class="navigation" aria-label="primary">
+              <ul role="list">
+                <li>
+                  <a href="#">Home</a>
+                </li>
+                <li>
+                  <a href="#">About</a>
+                </li>
+                <li>
+                  <a href="#">Our Work</a>
+                </li>
+                <li>
+                  <a href="#">Contact Us</a>
+                </li>
+                <li>
+                  <a href="#">Your account</a>
+                </li>
+              </ul>
+            </nav>
+          </burger-menu>
+          <script>
+            /**
+             * Returns back a NodeList of focusable elements
+             * that exist within the passed parnt HTMLElement
+             *
+             * @param {HTMLElement} parent HTML element
+             * @returns {NodeList} The focusable elements that we can find
+             */
+            function getFocusableElements(parent) {
+              if (!parent) {
+                console.warn('You need to pass a parent HTMLElement');
+                return [];
+              }
+
+              return parent.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled]), details:not([disabled]), summary:not(:disabled)');
+            };
+
+
+            class BurgerMenu extends HTMLElement {
+              constructor() {
+                super();
+
+                const self = this;
+
+                this.state = new Proxy(
+                  {
+                    status: 'open',
+                    enabled: false,
+                  },
+                  {
+                    set(state, key, value) {
+                      const oldValue = state[key];
+
+                      state[key] = value;
+                      if (oldValue !== value) {
+                        self.processStateChange();
+                      }
+                      return state;
+                    },
+                  }
+                );
+              }
+
+              get maxWidth() {
+                return parseInt(this.getAttribute('max-width') || 9999, 10);
+              }
+
+              connectedCallback() {
+                this.initialMarkup = this.innerHTML;
+                this.render();
+
+                const observer = new ResizeObserver((observedItems) => {
+                  const { contentRect } = observedItems[0];
+                  this.state.enabled = contentRect.width <= this.maxWidth;
+                });
+
+                // We want to watch the parent like a hawk
+                observer.observe(this.parentNode);
+              }
+
+              render() {
+                this.innerHTML = `
+                  <div class="burger-menu" data-element="burger-root">
+                    <button class="burger-menu__trigger" data-element="burger-menu-trigger" type="button" aria-label="Open menu">
+                      <span class="burger-menu__bar" aria-hidden="true"></span>
+                    </button>
+                    <div class="burger-menu__panel" data-element="burger-menu-panel">
+                      ${this.initialMarkup} 
+                    </div>
+                  </div>
+                `;
+
+                this.postRender();
+              }
+
+              postRender() {
+                this.trigger = this.querySelector('[data-element="burger-menu-trigger"]');
+                this.panel = this.querySelector('[data-element="burger-menu-panel"]');
+                this.root = this.querySelector('[data-element="burger-root"]');
+                this.focusableElements = getFocusableElements(this);
+
+                if (this.trigger && this.panel) {
+                  this.toggle();
+
+                  this.trigger.addEventListener('click', (evt) => {
+                    evt.preventDefault();
+
+                    this.toggle();
+                  });
+
+                  document.addEventListener('focusin', () => {
+                    if (!this.contains(document.activeElement)) {
+                      this.toggle('closed');
+                    }
+                  });
+
+                  return;
+                }
+
+                this.innerHTML = this.initialMarkup;
+              }
+
+              toggle(forcedStatus) {
+                if (forcedStatus) {
+                  if (this.state.status === forcedStatus) {
+                    return;
+                  }
+
+                  this.state.status = forcedStatus;
+                } else {
+                  this.state.status = this.state.status === 'closed' ? 'open' : 'closed';
+                }
+              }
+
+              processStateChange() {
+                this.root.setAttribute('status', this.state.status);
+                this.root.setAttribute('enabled', this.state.enabled ? 'true' : 'false');
+
+                this.manageFocus();
+
+                switch (this.state.status) {
+                  case 'closed':
+                    this.trigger.setAttribute('aria-expanded', 'false');
+                    this.trigger.setAttribute('aria-label', 'Open menu');
+                    break;
+                  case 'open':
+                  case 'initial':
+                    this.trigger.setAttribute('aria-expanded', 'true');
+                    this.trigger.setAttribute('aria-label', 'Close menu');
+                    break;
+                }
+              }
+
+              manageFocus() {
+                if (!this.state.enabled) {
+                  this.focusableElements.forEach((element) => element.removeAttribute('tabindex'));
+                  return;
+                }
+
+                switch (this.state.status) {
+                  case 'open':
+                    this.focusableElements.forEach((element) => element.removeAttribute('tabindex'));
+                    break;
+                  case 'closed':
+                    [...this.focusableElements].filter((element) => element.getAttribute('data-element') !== 'burger-menu-trigger').forEach((element) => element.setAttribute('tabindex', '-1'));
+                    break;
+                }
+              }
+            }
+
+            if ('customElements' in window) {
+              customElements.define('burger-menu', BurgerMenu);
+            }
+          </script>
+        </div>
+      </div>
+    </header>
+    <main id="main-content" tabindex="-1" class="wrapper">
+      <article class="[ post ] [ flow ]">
+        <h1>A responsive, progressively enhanced burger menu</h1>
+        <p>
+          Burger menus are a relic of responsive design that no matter what your opinion of
+          them is, they continue to be a dominant design pattern. They’re very good at
+          preserving often-limited horizontal space, but they also, more often than not, are
+          built in a user-hostile, non-accessible fashion.
+        </p>
+        <p>
+          <a
+            href="https://piccalil.li/premium/build-a-fully-responsive-progressively-enhanced-burger-menu"
+            >In this premium tutorial</a
+          >, we’re going to build a burger menu from the ground up, using progressive
+          enhancement, `ResizeObserver`, `Proxy` state and of course, super-solid HTML and CSS
+          that pull from the CUBE CSS principles.
+        </p>
+        <p>
+          This whole page is what you’re building in the tutorial 👆.
+          <a
+            href="https://piccalil.li/premium/build-a-fully-responsive-progressively-enhanced-burger-menu"
+            >Let’s dive in</a
+          >
+        </p>
+      </article>
+    </main>
+    <script src="js/burger-menu.js" type="module"></script>
+  </body>
+</html>
